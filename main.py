@@ -1,140 +1,112 @@
-import re
-import requests
+import re, requests
 import itertools
 
-def pobierz_dane_artykulu(html: str) -> tuple[str, str]:
-    """
-    Pobiera i zwraca tekst główny artykułu oraz sekcję przypisów.
-    """
-    tekst_ciala_artykulu = html[html.find('<div id="mw-content-text"'):html.find('<div id="catlinks"')]
-    html_przypisy = html[html.find('id="Przypisy"'):]
-    html_przypisy = html_przypisy[:html_przypisy.find('<div class="mw-heading"')]
-    return tekst_ciala_artykulu, html_przypisy
+# Wzorce wyrażeń regularnych dla różnych typów odnośników Wikipedii
+wzorzec_odn_artykul = r'<li[^>]*>.*<a[^>]*href=\"(/wiki/(?![^"]*:)[^"]+)\"[^>]*title=\"([^"]+)\"[^>]*>.*</li>'
+wzorzec_odn_wewn = r'<a[^>]*href=\"(/wiki/(?![^"]*:)[^"]+)\"[^>]*title=\"([^"]+)\"[^>]*>'
+wzorzec_odn_obrazek = r'<img[^>]*src=\"(//upload\.wikimedia\.org/[^"]+)\"[^>]*/>'
+wzorzec_odn_zewnetrzny = r'<a[^>]*class=\"external[^"]*\"[^>]*href=\"([^"]+)\"[^>]*>'
+wzorzec_odn_kategoria = r'<a[^>]*href=\"(/wiki/Kategoria:[^"]+)\"[^>]*title=\"([^"]+)\"[^>]*>'
 
 
-def pobierz_kategorie_art(html: str) -> str:
-    """
-    Pobiera sekcję kategorii z HTML artykułu.
-    """
+# Funkcja pomocnicza do formatowania i wyświetlania danych
+def wyswietl_wynik(lista_elementow):
+    wynik = ' | '.join(lista_elementow).strip()  # Łączenie elementów, usuwanie zbędnych spacji
+    print(wynik)
+
+
+# Wyciąganie głównego tekstu z artykułu
+def wyciagnij_zawartosc(html):
+    return html[html.find('<div id="mw-content-text"'):html.find('<div id="catlinks"')]
+
+
+# Uzyskanie HTML-a sekcji przypisów (na końcu strony)
+def wyciagnij_html_przypisy(html):
+    html = html[html.find('id="Przypisy"'):]
+    html = html[:html.find('<div class="mw-heading')]
+    return html
+
+
+# Pobieranie części HTML zawierającej linki do kategorii
+def wyciagnij_html_kategorii(html):
     return html[html.find('<div id="catlinks"'):]
 
 
-def znajdz_w_limicie(wzorzec: str, tekst: str, flaga: int = 0, limit: int = 5) -> list:
-    """
-    Znajduje do `limit` wystąpień wzorca regex w podanym tekście.
-    """
-    return list(map(lambda m: m.groups(), itertools.islice(re.finditer(wzorzec, tekst, flags=flaga), limit)))
+# Znajdowanie pasujących wyrażeń regularnych w tekście z limitem wyników
+def znajdz_wzorce(wzorzec, tekst, flaga=0, maks=5):
+    return list(map(lambda x: x.groups(), itertools.islice(re.finditer(wzorzec, tekst, flags=flaga), maks)))
 
 
-def pobierz_artykuly_z_kategorii(kategoria: str, limit: int = 3) -> list[tuple[str, str]]:
-    """
-    Pobiera listę artykułów z danej kategorii na Wikipedii.
-    """
+# Tworzenie linku do kategorii na Wikipedii, zamienia spacje na "_"
+def generuj_url_kategorii(kategoria_nazwa):
+    nazwa_dopasowana = kategoria_nazwa.replace(' ', '_')
+    return f'https://pl.wikipedia.org/wiki/Kategoria:{nazwa_dopasowana}'
 
-    def odnosnik_artykul():
-        # Wyrażenie regularne do wyłapywania artykułów
-        return r'<li[^>]*>.*?<a[^>]*href=\"(/wiki/(?![^":]*:)[^"]+)\"[^>]*title=\"([^"]+)\"[^>]*>.*?</li>'
 
-    url_strony_kategorii = pobierz_url_kategorii(kategoria)
-    odpowiedz = requests.get(url_strony_kategorii)
-    html = odpowiedz.text
-    artykuly = znajdz_w_limicie(odnosnik_artykul(), html, limit=limit)
+# Pobieranie listy artykułów dla danej kategorii
+def pobierz_artykuly_z_kategorii(nazwa_kat, maks=3):
+    url_kategorii = generuj_url_kategorii(nazwa_kat)
+    odp = requests.get(url_kategorii)
+    html = odp.text
+    artykuly = znajdz_wzorce(wzorzec_odn_artykul, html, maks=maks)
     return artykuly
 
-def pobierz_linki_wewnetrzne(artykuł: str, limit: int = 5) -> list[tuple[str, str]]:
-    """
-    Pobiera listę wewnętrznych linków w artykule.
-    """
 
-    def odnosnik_wewnetrzny():
-        # Wyrażenie regularne do wewnętrznych linków
-        return r'<a[^>]*href=\"(/wiki/(?![^":]*:)[^"]+)\"[^>]*title=\"([^"]+)\"[^>]*>'
-
-    html = pobierz_dane_artykulu(artykuł)[0]
-    linki = znajdz_w_limicie(odnosnik_wewnetrzny(), html, limit=limit)
-    return linki
+# Pobranie pełnej treści artykułu na podstawie jego linku
+def pobierz_zawartosc_artykulu(link):
+    odp = requests.get("https://pl.wikipedia.org" + link)
+    html = odp.text
+    return html
 
 
-def pobierz_obrazki(artykuł: str, limit: int = 3) -> list:
-    """
-    Pobiera listę obrazków z artykułu.
-    """
+# Pobieranie linków wewnętrznych z artykułu
+def pobierz_linki_wewn(artykul, maks=5):
+    html = wyciagnij_zawartosc(artykul)
+    linki_wewn = znajdz_wzorce(wzorzec_odn_wewn, html, maks=maks)
+    return linki_wewn
 
-    def odnosnik_obrazek():
-        # Wyrażenie regularne do linków obrazków
-        return r'<img[^>]*src=\"(//upload\.wikimedia\.org/[^"]+)\"[^>]*/?>'
 
-    html = pobierz_dane_artykulu(artykuł)[0]
-    obrazki = znajdz_w_limicie(odnosnik_obrazek(), html, limit=limit)
+# Pobieranie obrazków z artykułu
+def pobierz_obrazki(artykul, maks=3):
+    html = wyciagnij_zawartosc(artykul)
+    obrazki = znajdz_wzorce(wzorzec_odn_obrazek, html, maks=maks)
     return obrazki
 
 
-def pobierz_linki_zewnetrzne(artykuł: str, limit: int = 3) -> list:
-    """
-    Pobiera listę zewnętrznych linków w artykule.
-    """
-
-    def odnosnik_zewnetrzny():
-        # Wyrażenie regularne do zewnętrznych linków
-        return r'<a[^>]*class=\"external[^"]*\"[^>]*href=\"([^"]+)\"[^>]*>'
+# Pobieranie linków zewnętrznych w sekcji przypisów
+def pobierz_linki_zewnetrzne(artykul, maks=3):
+    html = wyciagnij_html_przypisy(artykul)
+    zewnetrzne_linki = znajdz_wzorce(wzorzec_odn_zewnetrzny, html, maks=maks)
+    return zewnetrzne_linki
 
 
-    html = pobierz_dane_artykulu(artykuł)[1]
-    odnośniki = znajdz_w_limicie(odnosnik_zewnetrzny(), html, limit=limit)
-    return odnośniki
-
-
-def pobierz_kategorie(artykuł: str, limit: int = 3) -> list:
-    """
-    Pobiera listę kategorii przypisanych do artykułu.
-    """
-
-    def odnosnik_kategoria():
-        # Wyrażenie regularne do linków kategorii
-        return r'<a[^>]*href=\"(/wiki/Kategoria:[^"]+)\"[^>]*title=\"([^"]+)\"[^>]*>'
-
-    html = pobierz_kategorie_art(artykuł)
-    kategorie = znajdz_w_limicie(odnosnik_kategoria(), html, limit=limit)
+# Pobieranie listy kategorii przypisanych do artykułu
+def pobierz_kategorie(artykul, maks=3):
+    html = wyciagnij_html_kategorii(artykul)
+    kategorie = znajdz_wzorce(wzorzec_odn_kategoria, html, maks=maks)
     return kategorie
 
-def pobierz_artykul(url_artykulu: str) -> str:
-    odpowiedz = requests.get("https://pl.wikipedia.org" + url_artykulu)
-    html = odpowiedz.text
-    return html
-def pobierz_url_kategorii(kategoria: str) -> str:
-    """
-    Tworzy URL dla danej kategorii na Wikipedii.
-    """
-    przetworzona_kategoria = kategoria.replace(' ', '_')
-    return f'https://pl.wikipedia.org/wiki/Kategoria:{przetworzona_kategoria}'
 
-
-def formatowanie_wyniku(iterable):
-    """
-    Formatuje wynik iterowalny jako ciąg znaków z separatorem ` | `.
-    """
-    polaczone = ' | '.join(iterable)
-    print(polaczone)
-
-
+# Główna funkcja wykonująca całą procedurę
 def main():
-    """
-    Funkcja główna pobierająca artykuły z kategorii i wyświetlająca ich treść, linki i obrazy.
-    """
-    kategoria = input().strip()
-    artykuly = pobierz_artykuly_z_kategorii(kategoria)
-    for link_artykulu, tytul_artykulu in artykuly:
-        artykul = pobierz_artykul(link_artykulu)
-        tekst_ciala_artykulu, html_przypisy = pobierz_dane_artykulu(artykul)
-        linki_wewnetrzne = pobierz_linki_wewnetrzne(artykul)
-        obrazki = pobierz_obrazki(artykul)
-        linki_zewnetrzne = pobierz_linki_zewnetrzne(artykul)
-        kategorie = pobierz_kategorie(artykul)
+    kat = input().strip()
+    artykuly = pobierz_artykuly_z_kategorii(kat)
 
-        formatowanie_wyniku(map(lambda x: x[1], linki_wewnetrzne))
-        formatowanie_wyniku(map(lambda x: x[0], obrazki))
-        formatowanie_wyniku(map(lambda x: x[0], linki_zewnetrzne))
-        formatowanie_wyniku(map(lambda x: x[1].removeprefix('Kategoria:'), kategorie))
+    for link_art, tytul_art in artykuly:
+        tresc = pobierz_zawartosc_artykulu(link_art)
+
+        # Zbieranie i formatowanie wyników do wyświetlenia
+        linki_wewn = pobierz_linki_wewn(tresc)
+        wyswietl_wynik([el[1] for el in linki_wewn])
+
+        obrazki = pobierz_obrazki(tresc)
+        wyswietl_wynik([el[0] for el in obrazki])
+
+        linki_zewn = pobierz_linki_zewnetrzne(tresc)
+        wyswietl_wynik([el[0] for el in linki_zewn])
+
+        kategorie = pobierz_kategorie(tresc)
+        wyswietl_wynik([el[1].removeprefix('Kategoria:') for el in kategorie])
 
 
 if __name__ == '__main__':
