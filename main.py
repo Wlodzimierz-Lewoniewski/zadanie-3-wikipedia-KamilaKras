@@ -78,6 +78,7 @@ def pobierz_linki_zewnetrzne(artykuł: str, limit: int = 3) -> list:
         # Wyrażenie regularne do zewnętrznych linków
         return r'<a[^>]*class=\"external[^"]*\"[^>]*href=\"([^"]+)\"[^>]*>'
 
+
     html = pobierz_dane_artykulu(artykuł)[1]
     odnośniki = znajdz_w_limicie(odnosnik_zewnetrzny(), html, limit=limit)
     return odnośniki
