@@ -70,10 +70,21 @@ def main():
         tresc = pobierz_zawartosc_artykulu(link_art)
 
         # Zbieranie, formatowanie wyników
-        wyswietl_wynik([elem[1] for elem in pobierz_linki_wewn(tresc)])
-        wyswietl_wynik([elem[0] for elem in pobierz_obrazki(tresc)])
-        wyswietl_wynik([elem[0] for elem in pobierz_linki_zewnetrzne(tresc)])
-        wyswietl_wynik([elem[1].removeprefix('Kategoria:') for elem in pobierz_kategorie(tresc)])
+        linki_wewn = pobierz_linki_wewn(tresc)
+        if linki_wewn:
+            wyswietl_wynik([elem[1] for elem in linki_wewn])
+
+        obrazki = pobierz_obrazki(tresc)
+        if obrazki:
+            wyswietl_wynik([elem[0] for elem in obrazki])
+
+        linki_zewn = pobierz_linki_zewnetrzne(tresc)
+        if linki_zewn:
+            wyswietl_wynik([elem[0] for elem in linki_zewn])
+
+        kategorie = pobierz_kategorie(tresc)
+        if kategorie:
+            wyswietl_wynik([elem[1].removeprefix('Kategoria:') for elem in kategorie])
 
 if __name__ == '__main__':
     main()
